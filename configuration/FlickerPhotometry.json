@@ -1,0 +1,28 @@
+[
+    {
+		"flavor": "",
+		"hook": "",
+		"importance": "",
+		"localHookTemplate": "",
+		"name": "BrainardLabBase",
+		"pathPlacement": "append",
+		"subfolder": "",
+		"toolboxRoot": "",
+		"type": "include",
+		"update": "",
+		"url": ""
+	},
+    {
+		"flavor": "",
+		"hook": "",
+		"importance": "",
+		"localHookTemplate": "configuration/FlickerPhotometryLocalHookTemplate.m",
+		"name": "FlickerPhotometry",
+		"pathPlacement": "append",
+		"subfolder": "toolbox",
+		"toolboxRoot": "",
+		"type": "git",
+		"update": "",
+		"url": "https://github.com/DavidBrainard/FlickerPhotometry.git"
+	}
+]
