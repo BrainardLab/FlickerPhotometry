@@ -12,6 +12,7 @@ function GLW_CFF(fName, varargin)
 %    saves subjects' adjustment history and displays their chosen m cone
 %    contrast and adjustments on the screen. It is designed for displays  
 %    with 60 or 120 Hz frame rates and includes code for verifying timing.
+%    Contrast values are calculated from an [0.5 0.5 0.5] RGB background.
 %
 % Inputs (optional)
 %    fName             - Matlab string ending in .mat. Indicates name of
@@ -89,6 +90,7 @@ mPosition = 1; %initial position in table of values
 
 %create array to store adjustment history
 adjustmentArray = zeros(3,100);
+adjustmentArray(:,1) = mArray(:,1); 
 adjustmentArrayPosition = 2; %initial position in adjustment history array
 
 try
@@ -117,12 +119,12 @@ try
     intro.close;
     
     %create stimulus window
-    win = GLWindow('BackgroundColor', [0.5 0.5 0.5],...
+    win = GLWindow('BackgroundColor', [0.25 0.25 0.25],...
         'SceneDimensions', screenSize, 'windowID', length(disp));
     
     %calculate color of circle and diameter in mm. Then add circle. 
     %lCone color is set to 10% l contrast
-    lCone = contrastTorgb(cal, [0.154933 0 0], 'RGB', true); 
+    lCone = contrastTorgb(cal, [0.14 0 0], 'RGB', true); 
     angle = 2; %visual angle (degrees)
     diameter = tan(deg2rad(angle/2)) * (2 * p.Results.viewDistance); 
     win.addOval([0 0], [diameter diameter], lCone, 'Name', 'circle');
@@ -159,7 +161,7 @@ try
         elapsedFrames = elapsedFrames + 1;
         
         %switch color if needed
-        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || frameRate == 60 
+        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || (frameRate == 60)
             trackLCone = ~trackLCone;
         end
         
@@ -219,7 +221,7 @@ try
     col = length(adjustmentArray)/3;
     adjustmentArray = reshape(adjustmentArray, [3 col]);
     for i = 1:col
-        adjustmentArray(:,i) = SettingsToSensor(cal, adjustmentArray(:,i)); 
+        adjustmentArray(:,i) = rgbToContrast(cal, adjustmentArray(:,i)', 'RGB', true); 
     end 
     adjustmentArray = adjustmentArray(2,:); 
     
@@ -227,7 +229,8 @@ try
     fprintf('adjustment history: ');
     fprintf('%g, ', adjustmentArray); 
     fprintf('\n'); 
-    save(fName, 'adjustmentArray');
+    outputLocation = ['/Users/deena/Desktop/flickerPhotometryData/', fName];
+    save(outputLocation, 'adjustmentArray');
 catch e %handle errors
     ListenChar(0);
     mglDisplayCursor(1);
