@@ -43,7 +43,7 @@ end
 %% Set preferences for project output
 %
 % This will need to be locally configured.
-outputBaseDir = fullfile(baseDir,'CNST_data','FlickerPhotometry');
+outputBaseDir = '/Users/deena/Desktop/flickerPhotometryData';
 
 % Set the preferences
 setpref(projectName,'outputBaseDir',outputBaseDir);
