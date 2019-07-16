@@ -17,7 +17,7 @@ function GLW_CFF(fName, varargin)
 % Inputs (optional)
 %    fName             - Matlab string ending in .mat. Indicates name of
 %                        file you want to create/save data to. Default is
-%                        'CFFresults.mat'
+%                        'CFFResults.mat'
 %
 % Outputs:
 %    none
@@ -42,6 +42,7 @@ function GLW_CFF(fName, varargin)
 %                        frames
 %    07/10/19  dce       Rewrote stimuli to be in terms of cone contrast 
 %                        values rather than rgb values. 
+%    07/16/19  dce       Changed data saving procedure 
 
 % Examples:
 %{
@@ -73,12 +74,12 @@ height = screenSize(2) / 2;
 
 %load calibration information
 [cal,cals] = LoadCalFile(p.Results.calFile,[],getpref('BrainardLabToolbox','CalDataFolder'));
-load T_cones_ss2 %cone fundamentals
+load T_cones_ss2; %cone fundamentals
 cal = SetSensorColorSpace(cal,T_cones_ss2, S_cones_ss2);
 cal = SetGammaMethod(cal,0);
 
 %fill table with m contrast values. Contrast values go from 0 to 16.5757%
-% (max contrast on the Metropsis display for the given background)
+%(max contrast on the Metropsis display for a [0.5 0.5 0.5] RGB background)
 mArray = zeros(3,20);
 mArray(2,:) = 0.00828785:0.00828785:0.165757; 
 
@@ -123,8 +124,8 @@ try
         'SceneDimensions', screenSize, 'windowID', length(disp));
     
     %calculate color of circle and diameter in mm. Then add circle. 
-    %lCone color is set to 10% l contrast
-    lCone = contrastTorgb(cal, [0.14 0 0], 'RGB', true); 
+    %lCone color is set to 12% l contrast
+    lCone = contrastTorgb(cal, [0.12 0 0], 'RGB', true); 
     angle = 2; %visual angle (degrees)
     diameter = tan(deg2rad(angle/2)) * (2 * p.Results.viewDistance); 
     win.addOval([0 0], [diameter diameter], lCone, 'Name', 'circle');
@@ -161,7 +162,7 @@ try
         elapsedFrames = elapsedFrames + 1;
         
         %switch color if needed
-        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || (frameRate == 60)
+        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || frameRate == 60
             trackLCone = ~trackLCone;
         end
         
@@ -181,6 +182,7 @@ try
                         mPosition = 1;
                     end
             end
+            
             %store new m value in adjustment history table 
             adjustmentArray(:,adjustmentArrayPosition) = mArray(:,mPosition);
             adjustmentArrayPosition = adjustmentArrayPosition + 1; 
@@ -225,13 +227,22 @@ try
     end 
     adjustmentArray = adjustmentArray(2,:); 
     
+    %display results 
     fprintf('chosen m cone contrast is %g \n', adjustmentArray(end));
     fprintf('adjustment history: ');
     fprintf('%g, ', adjustmentArray); 
     fprintf('\n'); 
-    outputLocation = ['/Users/deena/Desktop/flickerPhotometryData/', fName];
-    save(outputLocation, 'adjustmentArray');
-catch e %handle errors
+    
+    %save data (length of fName used should equal length of subject ID) 
+    outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),fName(1:3)); 
+    if (~exist(outputDir,'dir'))
+        mkdir(outputDir);
+    end
+    fileLoc = [outputDir,'/',fName]; 
+    save(fileLoc, 'adjustmentArray');
+
+%handle errors
+catch e 
     ListenChar(0);
     mglDisplayCursor(1);
     rethrow(e);
