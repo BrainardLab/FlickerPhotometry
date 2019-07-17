@@ -55,7 +55,7 @@ function GLW_CFF(fName, varargin)
 
 %parse input
 if nargin == 0
-    fName = 'CFFresults.mat'; %default filename
+    fName = 'CFFResults.mat'; %default filename
 elseif nargin > 7
     error('too many inputs');
 end
@@ -233,8 +233,12 @@ try
     fprintf('%g, ', adjustmentArray); 
     fprintf('\n'); 
     
-    %save data (length of fName used should equal length of subject ID) 
-    outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),fName(1:3)); 
+    %save data 
+    if fName == 'CFFResults.mat'
+        outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),'test');
+    else %length of fName used should equal length of subject ID
+        outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),fName(1:3));
+    end 
     if (~exist(outputDir,'dir'))
         mkdir(outputDir);
     end
