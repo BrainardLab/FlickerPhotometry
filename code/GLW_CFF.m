@@ -20,7 +20,7 @@ function GLW_CFF(fName, varargin)
 %                        'CFFResults.mat'
 %
 % Outputs:
-%    none
+%    None
 %
 % Optional key/value pairs (can only use if you input a filename):
 %    'viewDistance'   - double indicating viewing distance in mm. Default
@@ -32,7 +32,7 @@ function GLW_CFF(fName, varargin)
 %    'calFile'        - string with name of calibration file. Default is 
 %                       'MetropsisCalibration' 
 
-%History:
+% History:
 %    06/05/19  dce       Wrote it. Visual angle conversion code from ar
 %                        ('ImageSizeFromAngle.m')
 %    06/06/19  dce       Minor edits, input error checking
@@ -51,6 +51,7 @@ function GLW_CFF(fName, varargin)
     GLW_CFF('Deena.mat', 'viewDistance', 1000)
     GLW_CFF('Deena.mat', 'maxFrames', 3600)
     GLW_CFF('Deena.mat', 'calFile', 'MetropsisCalibration')
+    GLW_CFF('DHB.mat', 'calFile', 'EyeTrackerLCDTest')
 %}
 
 %parse input
@@ -62,15 +63,20 @@ end
 p = inputParser;
 p.addParameter('viewDistance', 400, @(x) (isnumeric(x) & isscalar(x)));
 p.addParameter('maxFrames', Inf, @(x) (isnumeric(x) & isscalar(x)));
-p.addParameter('calFile', 'MetropsisCalibration', @(x) (isstring(x))); 
+p.addParameter('calFile', 'MetropsisCalibration', @(x) (ischar(x))); 
 p.parse(varargin{:});
+
+%key parameters
+bgLinearRGB = [0.25 0.25 0.25];         % Background linear RGB values
+nMContrastSteps = 20;                   % Number of possibilities for m contrast
+lConeContrast = 0.12;                   % Contrast for L cone phase of the flicker
 
 %get information on display
 disp = mglDescribeDisplays;
 last = disp(end); %we will be using the last display
 frameRate = last.refreshRate;
 screenSize = last.screenSizeMM; %screen dimensions in mm
-height = screenSize(2) / 2;
+centerHeight = screenSize(2) / 2;
 
 %load calibration information
 [cal,cals] = LoadCalFile(p.Results.calFile,[],getpref('BrainardLabToolbox','CalDataFolder'));
@@ -80,11 +86,13 @@ cal = SetGammaMethod(cal,0);
 
 %fill table with m contrast values. Contrast values go from 0 to 16.5757%
 %(max contrast on the Metropsis display for a [0.5 0.5 0.5] RGB background)
-mArray = zeros(3,20);
+% 
+% We assume three classes of cones and that the m cones are the second.
+mArray = zeros(3,nMContrastSteps);
 mArray(2,:) = 0.00828785:0.00828785:0.165757; 
 
 %convert contrast values to RGB values 
-for i = 1:20
+for i = 1:nMContrastSteps 
     mArray(:,i) = contrastTorgb(cal, mArray(:,i), 'RGB', true); 
 end
 mPosition = 1; %initial position in table of values
@@ -99,16 +107,16 @@ try
     intro = GLWindow('BackgroundColor', [0 0 0], 'SceneDimensions',...
         screenSize, 'windowID', length(disp));
     intro.addText('A flashing red and green circle will appear on the screen',...
-        'Center', [0 0.3 * height], 'FontSize', 75, 'Color', [1 1 1],...
+        'Center', [0 0.3 * centerHeight], 'FontSize', 75, 'Color', [1 1 1],...
         'Name', 'line1');
     intro.addText('Try to adjust the green light to minimize the flicker',...
-        'Center', [0 0.1 * height], 'FontSize', 75, 'Color', [1 1 1],...
+        'Center', [0 0.1 * centerHeight], 'FontSize', 75, 'Color', [1 1 1],...
         'Name', 'line2');
     intro.addText('Press u to increase green intensity and press d to decrease green intensity',...
-        'Center', [0 -0.1 * height], 'FontSize', 75, 'Color', [1 1 1],...
+        'Center', [0 -0.1 * centerHeight], 'FontSize', 75, 'Color', [1 1 1],...
         'Name', 'line3');
     intro.addText('When you are done, press q to quit adjustment',...
-        'Center', [0 -0.3 * height], 'FontSize', 75, 'Color', [1 1 1],...
+        'Center', [0 -0.3 * centerHeight], 'FontSize', 75, 'Color', [1 1 1],...
         'Name', 'line4');
     intro.open;
     mglDisplayCursor(0);
@@ -120,12 +128,12 @@ try
     intro.close;
     
     %create stimulus window
-    win = GLWindow('BackgroundColor', [0.25 0.25 0.25],...
+    win = GLWindow('BackgroundColor', bgLinearRGB, ...
         'SceneDimensions', screenSize, 'windowID', length(disp));
     
     %calculate color of circle and diameter in mm. Then add circle. 
     %lCone color is set to 12% l contrast
-    lCone = contrastTorgb(cal, [0.12 0 0], 'RGB', true); 
+    lCone = contrastTorgb(cal, [lConeContrast 0 0], 'RGB', true); 
     angle = 2; %visual angle (degrees)
     diameter = tan(deg2rad(angle/2)) * (2 * p.Results.viewDistance); 
     win.addOval([0 0], [diameter diameter], lCone, 'Name', 'circle');
@@ -137,7 +145,12 @@ try
     FlushEvents;
     
     %initial parameters 
+    %
+    % trackLCone tells us whether it is L cone or M cone stimulus on this
+    % frame. How fast we toggle this determines the flicker rate.
     trackLCone = true; %stimulus color tracker
+    
+    % This triacks total number of elapsed frames
     elapsedFrames = 1;
     maxFrames = p.Results.maxFrames;
     if isfinite(maxFrames)
@@ -162,7 +175,7 @@ try
         elapsedFrames = elapsedFrames + 1;
         
         %switch color if needed
-        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || frameRate == 60
+        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || (frameRate == 60 && mod(elapsedFrames, 2) == 1)
             trackLCone = ~trackLCone;
         end
         
@@ -234,7 +247,7 @@ try
     fprintf('\n'); 
     
     %save data 
-    if fName == 'CFFResults.mat'
+    if strcmp(fName,'CFFResults.mat')
         outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),'test');
     else %length of fName used should equal length of subject ID
         outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),fName(1:3));
@@ -242,7 +255,10 @@ try
     if (~exist(outputDir,'dir'))
         mkdir(outputDir);
     end
-    fileLoc = [outputDir,'/',fName]; 
+    fileLoc = fullfile(outputDir,fName); 
+    if (exist(fileLoc,'file'))
+        error(sprintf('Specified output file %s already exists',fName));
+    end
     save(fileLoc, 'adjustmentArray');
 
 %handle errors
