@@ -43,7 +43,7 @@ end
 %% Set preferences for project output
 %
 % This will need to be locally configured.
-outputBaseDir = '/Users/geoffreyaguirre/Documents/MATLAB/flicker photometry data placeholder'; 
+outputBaseDir = '/Users/geoffreyaguirre/Dropbox (Aguirre-Brainard Lab)/CNST_data/FlickerPhotometry'; 
 
 % Set the preferences
 setpref(projectName,'outputBaseDir',outputBaseDir);
