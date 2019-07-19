@@ -1,4 +1,4 @@
-function GLW_CFF(fName, varargin)
+function GLW_CFF(varargin)
 % Heterochromatic flicker photometry experiment using GLWindow
 %
 % Syntax:
@@ -6,29 +6,45 @@ function GLW_CFF(fName, varargin)
 %
 % Description:
 %    Implements a heterochromatic flicker photometry experiment using
-%    GLWindow. Subjects see a red and green light flickering at 30Hz and
-%    use keypresses to adjust the m cone contrast to minimize the flicker
-%    (u = adjust up, d = adjust down, q = quit adjustment). The program
-%    saves subjects' adjustment history and displays their chosen m cone
-%    contrast and adjustments on the screen. It is designed for displays
-%    with 60 or 120 Hz frame rates and includes code for verifying timing.
-%    Contrast values are calculated from an [0.5 0.5 0.5] RGB background.
+%    GLWindow. Subjects see a red and green flickering light and use
+%    keypresses to adjust a specified cone's contrast (L or M cone) to
+%    minimize the flicker. u = adjust up, d = adjust down, and q = quit
+%    adjustment. The program saves subjects' data and displays their chosen
+%    contrast and adjustments on the screen. It includes optional code for
+%    verifying display timing.
 %
-% Inputs 
-%    None 
+% Inputs
+%    After starting the program, the experimenter is promoted to enter
+%    subject ID (character vector) and session number (integer)
 %
 % Outputs:
-%    None
+%    All variables are automatically saved in a file named
+%    'SubjectID_SessionNumber.mat' in a subject-specific folder
 %
-% Optional key/value pairs (can only use if you input a filename):
-%    'viewDistance'   - double indicating viewing distance in mm. Default
-%                       is 400
+% Optional key/value pairs:
+%    'calFile'             - character vector with name of calibration file.
+%                            Default is 'MetropsisCalibration'.
 %
-%    'maxFrames'      - double indicating the maximum number of frames,
-%                       mostly used for timing verification. Default is Inf
+%    'adjustCone'          - character vector indicating which cone's
+%                            contrast the user can adjust: 'L' or 'M'.
+%                            Default is 'M'.
 %
-%    'calFile'        - string with name of calibration file. Default is
-%                       'MetropsisCalibration'
+%    'steadyConeContrast'  - fixed contrast of non-adjustable cone. Must be
+%                            a double between 0 and maxLContrast if
+%                            adjusting M or between 0 and maxMContrast if
+%                            adjusting L. Default is 0.12.
+%
+%    'viewDistance'        - double indicating viewing distance in mm.
+%                            Default is 400.
+%
+%    'flickerRate'         - integer indicating flicker frequency in Hz.
+%                            Default is 30.
+%
+%    'timeCheck'           - logical indicating whether to collect and plot
+%                            stimulus timing information. Default is false.
+%
+%    'maxFrames'           - double indicating the maximum number of
+%                            frames. Default is Inf.
 
 % History:
 %    06/05/19  dce       Wrote it. Visual angle conversion code from ar
@@ -40,51 +56,78 @@ function GLW_CFF(fName, varargin)
 %                        frames
 %    07/10/19  dce       Rewrote stimuli to be in terms of cone contrast
 %                        values rather than rgb values.
-%    07/16/19  dce       Changed data saving procedure
+%    07/19/19  dce       Cleaned up code. Added new key-value pairs,
+%                        including options to change frame rate, identity
+%                        of adjusted cone, and steady cone contrast
 
 % Examples:
 %{
     GLW_CFF
-    GLW_CFF('Deena.mat')
-    GLW_CFF('Deena.mat', 'viewDistance', 1000)
-    GLW_CFF('Deena.mat', 'maxFrames', 3600)
-    GLW_CFF('Deena.mat', 'calFile', 'MetropsisCalibration')
-    GLW_CFF('DHB.mat', 'calFile', 'EyeTrackerLCDTest')
+    GLW_CFF('viewDistance', 1000)
+    GLW_CFF('adjustCone', 'L', 'steadyConeContrast', 0.16)
+    GLW_CFF('timeCheck', true, 'maxFrames', 3600)
+    GLW_CFF('calFile', 'EyeTrackerLCDTest')
 %}
 
-% Parse key-value pairs 
+% Parse key-value pairs
 p = inputParser;
-p.addParameter('viewDistance', 400, @(x) (isnumeric(x) & isscalar(x)));
-p.addParameter('maxFrames', Inf, @(x) (isnumeric(x) & isscalar(x)));
 p.addParameter('calFile', 'MetropsisCalibration', @(x) (ischar(x)));
+p.addParameter('adjustCone', 'M', @(x) (ischar(x) & isscalar(x)));
+p.addParameter('steadyConeContrast', 0.12, @(x) (isnumeric(x) & isscalar(x) & x >= 0));
+p.addParameter('flickerRate', 30, @(x) (isnumeric(x) & isscalar(x) & x >= 0));
+p.addParameter('viewDistance', 400, @(x) (isnumeric(x) & isscalar(x) & x > 0));
+p.addParameter('timeCheck', false, @(x) (islogical(x)));
+p.addParameter('maxFrames', Inf, @(x) (isnumeric(x) & isscalar(x)));
 p.parse(varargin{:});
 
-%prompt user for subject ID and session number
-subjectID = input('Enter subject ID (string): ');
+% Key parameters. Maximum cone contrast values vary by monitor and are
+% based on a [0.5 0.5 0.5] linear RGB background
+bgLinearRGB = [0.25 0.25 0.25]; % Background linear RGB values
+nContrastSteps = 21;            % Number of possibilities for adjustable contrast
+maxLContrast = 0.154933;        % Maximum L cone contrast for Display++
+maxMContrast = 0.165757;        % Maximum M cone contrast for Display++
+angle = 2;                      % Visual angle of stimulus (degrees)
+timingDuration = 10;            % Duration (s) that timing data will be collected for, if maxFrames is not specified
+
+% Check if chosen steady cone contrast is within monitor gamut
+steadyContrast = p.Results.steadyConeContrast;
+if strcmp(p.Results.adjustCone,'M') && (steadyContrast > maxLContrast)
+    error(sprintf('Chosen steady cone contrast %g is greater than max L contrast %g', steadyContrast, maxLContrast));
+elseif strcmp(p.Results.adjustCone,'L') && (steadyContrast > maxMContrast)
+    error(sprintf('Chosen steady cone contrast %g is greater than max M contrast %g', steadyContrast, maxMContrast));
+end
+
+% Get information on display
+disp = mglDescribeDisplays;
+last = disp(end);                % We will be using the last display
+frameRate = last.refreshRate;
+screenSize = last.screenSizeMM;  % Screen dimensions in mm
+centerHeight = screenSize(2) / 2;
+
+% Check if user's flicker rate divides into frame rate
+if mod(frameRate, 2 * p.Results.flickerRate) == 0
+    nHoldingFrames = frameRate / (2 * p.Results.flickerRate);
+else
+    error(sprintf('Monitor frame rate (%g Hz) is not divisible by chosen flicker rate (2 * %g Hz)', frameRate, p.Results.flickerRate));
+end
+
+% Prompt user to enter subject ID and session number
+subjectID = input('Enter subject ID: ');
 sessionNum = num2str(input('Enter session number: '));
 
-%Create directory and file for saving data
+% Create directory named SubjectID for saving data, if it doesn't exist already
 outputDir = fullfile(getpref('FlickerPhotometry','outputBaseDir'),subjectID);
 if (~exist(outputDir,'dir'))
     mkdir(outputDir);
 end
-fileName = [subjectID,'_', sessionNum];
+
+% Create data file with name Subject ID_SessionNumber. Throw error if a
+% file already exists with that name
+fileName = [subjectID,'_', sessionNum, '.mat'];
 fileLoc = fullfile(outputDir,fileName);
-if (exist(fileLoc,'file'))
-    error(sprintf('Specified output file %s already exists',fName));
+if (isfile(fileLoc))
+    error(sprintf('Specified output file %s already exists', fileName));
 end
-
-% Key parameters
-bgLinearRGB = [0.25 0.25 0.25];         % Background linear RGB values
-nMContrastSteps = 21;                   % Number of possibilities for m contrast
-lConeContrast = 0.12;                   % Contrast for L cone phase of the flicker
-
-% Get information on display
-disp = mglDescribeDisplays;
-last = disp(end); %we will be using the last display
-frameRate = last.refreshRate;
-screenSize = last.screenSizeMM; % Screen dimensions in mm
-centerHeight = screenSize(2) / 2;
 
 % Load calibration information
 [cal,cals] = LoadCalFile(p.Results.calFile,[],getpref('BrainardLabToolbox','CalDataFolder'));
@@ -92,22 +135,25 @@ load T_cones_ss2; % Cone fundamentals
 cal = SetSensorColorSpace(cal,T_cones_ss2, S_cones_ss2);
 cal = SetGammaMethod(cal,0);
 
-% Fill table with m contrast values. Contrast values go from 0 to 16.5757%
-% (max contrast on the Metropsis display for a [0.5 0.5 0.5] RGB background)
-% We assume three classes of cones and that the m cones are the second.
-mArray = zeros(3,nMContrastSteps);
-mArray(2,:) = 0:0.00828785:0.165757;
+% Fill table with adjustable cone contrast values. We assume three classes
+% of cones where L cones are the first and M cones are the second.
+adjustmentTable = zeros(3,nContrastSteps);
+if strcmp(p.Results.adjustCone,'M') %fill table with M cone contrast steps
+    adjustmentTable(2,:) = linspace(0,maxMContrast,nContrastSteps);
+else %fill table with L cone contrast steps
+    adjustmentTable(1,:) = linspace(0,maxLContrast,nContrastSteps);
+end
 
 % Convert contrast values to RGB values
-for i = 1:nMContrastSteps
-    mArray(:,i) = contrastTorgb(cal, mArray(:,i), 'RGB', true);
+for i = 1:nContrastSteps
+    adjustmentTable(:,i) = contrastTorgb(cal, adjustmentTable(:,i), 'RGB', true);
 end
-mPosition = randi(nMContrastSteps); % Random initial position in table of values
+adjustmentTablePos = randi(nContrastSteps); % Random initial position in table
 
 % Create array to store adjustment history
-adjustmentArray = zeros(3,100);
-adjustmentArray(:,1) = mArray(:,mPosition);
-adjustmentArrayPosition = 2; % Initial position in adjustment history array
+dataArray = zeros(3,100);
+dataArray(:,1) = adjustmentTable(:,adjustmentTablePos);
+dataArrayPos = 2; % Initial position in adjustment history array
 
 try
     % Instructions window
@@ -125,7 +171,7 @@ try
     intro.addText('When you are done, press q to quit adjustment',...
         'Center', [0 -0.3 * centerHeight], 'FontSize', 75, 'Color', [1 1 1],...
         'Name', 'line4');
-        intro.addText('*Press any key to begin experiment*',...
+    intro.addText('*Press any key to begin experiment*',...
         'Center', [0 -0.5 * centerHeight], 'FontSize', 75, 'Color', [0.5 0.5 1],...
         'Name', 'line5');
     
@@ -135,7 +181,7 @@ try
     ListenChar(2);
     FlushEvents;
     
-    % Draw until the user presses a key 
+    % Draw until the user presses a key
     while ~CharAvail
         intro.draw;
     end
@@ -147,21 +193,30 @@ try
     
     % Calculate color of circle and diameter in mm. Then add circle.
     % L cone color is set to 12% l contrast
-    lCone = contrastTorgb(cal, [lConeContrast 0 0], 'RGB', true);
-    angle = 2; % Visual angle (degrees)
+    if strcmp(p.Results.adjustCone,'M')
+        steadyConeCol = contrastTorgb(cal, [steadyContrast 0 0], 'RGB', true);
+    else
+        steadyConeCol = contrastTorgb(cal, [0 steadyContrast 0], 'RGB', true);
+    end
+    
     diameter = tan(deg2rad(angle/2)) * (2 * p.Results.viewDistance);
-    win.addOval([0 0], [diameter diameter], lCone, 'Name', 'circle');
+    win.addOval([0 0], [diameter diameter], steadyConeCol, 'Name', 'circle');
     
-    % Initial parameters
-    %
-    % isLCone tells us whether it is L cone or M cone stimulus on this
-    % frame. How fast we toggle this determines the flicker rate.
-    isLCone = true; 
-    
-    elapsedFrames = 1; % This tracks total number of elapsed frames
+    % Initial parameters.
+    elapsedFrames = 1;     % Tracks total number of elapsed frames
     maxFrames = p.Results.maxFrames;
-    if isfinite(maxFrames)
-        timeStamps = zeros(1,maxFrames);
+    % isSteadyCone tells us whether it is the static or adjustable cone
+    % stimulus on this frame. How fast we toggle this determines the flicker rate.
+    isSteadyCone = true;
+    
+    
+    %create array for saving timing data for maxFrames or default duration
+    if p.Results.timeCheck
+        if isfinite(maxFrames)
+            timeStamps = zeros(1,maxFrames);
+        else
+            timeStamps = zeros(1, timingDuration*frameRate);
+        end
     end
     
     win.open;
@@ -170,24 +225,24 @@ try
     % Loop to swich oval color and parse user input
     while elapsedFrames <= maxFrames
         % Draw circle
-        if isLCone
-            color = lCone;
+        if isSteadyCone
+            color = steadyConeCol;
         else
-            color = mArray(:,mPosition)';
+            color = adjustmentTable(:,adjustmentTablePos)';
         end
         win.setObjectColor('circle', color);
         win.draw;
         
         % Save timestamp
-        if isfinite(maxFrames)
+        if p.Results.timeCheck
             timeStamps(elapsedFrames) = mglGetSecs;
         end
-        elapsedFrames = elapsedFrames + 1;
         
         % Switch color if needed
-        if (frameRate == 120 && mod(elapsedFrames, 2) == 1) || (frameRate == 60 && mod(elapsedFrames, 2) == 1)
-            isLCone = ~isLCone;
+        if mod(elapsedFrames, nHoldingFrames) == 0
+            isSteadyCone = ~isSteadyCone;
         end
+        elapsedFrames = elapsedFrames + 1;
         
         % Check for user input
         if CharAvail
@@ -195,20 +250,20 @@ try
                 case 'q' % Quit adjustment
                     break;
                 case 'u' % Adjust green up
-                    mPosition = mPosition + 1;
-                    if mPosition > nMContrastSteps
-                        mPosition = nMContrastSteps;
+                    adjustmentTablePos = adjustmentTablePos + 1;
+                    if adjustmentTablePos > nContrastSteps
+                        adjustmentTablePos = nContrastSteps;
                     end
                 case 'd' % Adjust green down
-                    mPosition = mPosition - 1;
-                    if mPosition < 1
-                        mPosition = 1;
+                    adjustmentTablePos = adjustmentTablePos - 1;
+                    if adjustmentTablePos < 1
+                        adjustmentTablePos = 1;
                     end
             end
             
             % Store new m value in adjustment history table
-            adjustmentArray(:,adjustmentArrayPosition) = mArray(:,mPosition);
-            adjustmentArrayPosition = adjustmentArrayPosition + 1;
+            dataArray(:,dataArrayPos) = adjustmentTable(:,adjustmentTablePos);
+            dataArrayPos = dataArrayPos + 1;
         end
     end
     
@@ -217,7 +272,7 @@ try
     mglDisplayCursor(1);
     win.close;
     
-    if isfinite(maxFrames)
+    if p.Results.timeCheck
         % Plot frame durations
         timeSteps = diff(timeStamps);
         figure(1);
@@ -230,6 +285,7 @@ try
         xlabel('Frame');
         ylabel('Duration (s)');
         legend('Measured Frame Rate', 'Target Frame Rate', 'Skipped Frame');
+        savefig(fullfile(outputDir, [fileName, '_frameRates.fig']));
         
         % Plot deviations from target frame rate
         figure(2);
@@ -239,23 +295,27 @@ try
         title('Deviations from Frame Rate');
         xlabel('Frame');
         ylabel('Difference Between Measured and Target Duration (s)');
+        savefig(fullfile(outputDir, [fileName, '_frameDeviations.fig']));
     end
     
     % Reformat adjustment history array
-    adjustmentArray = adjustmentArray(adjustmentArray ~= 0);
-    col = length(adjustmentArray)/3;
-    adjustmentArray = reshape(adjustmentArray, [3 col]);
+    dataArray = dataArray(dataArray ~= 0);
+    col = length(dataArray)/3;
+    dataArray = reshape(dataArray, [3 col]);
     for i = 1:col
-        adjustmentArray(:,i) = rgbToContrast(cal, adjustmentArray(:,i)', 'RGB', true);
+        dataArray(:,i) = rgbToContrast(cal, dataArray(:,i)', 'RGB', true);
     end
-    adjustmentArray = adjustmentArray(2,:);
-    
+    if strcmp(p.Results.adjustCone,'M')
+        dataArray = dataArray(2,:);
+    else
+        dataArray = dataArray(1,:);
+    end
     % Display results and save data
-    fprintf('chosen m cone contrast is %g \n', adjustmentArray(end));
+    fprintf('chosen %s cone contrast is %g \n', p.Results.adjustCone, dataArray(end));
     fprintf('adjustment history: ');
-    fprintf('%g, ', adjustmentArray);
+    fprintf('%g, ', dataArray);
     fprintf('\n');
-    save(fileLoc); 
+    save(fileLoc);
     
 catch e % Handle errors
     ListenChar(0);
