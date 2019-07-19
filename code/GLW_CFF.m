@@ -19,11 +19,12 @@ function GLW_CFF(varargin)
 %
 % Outputs:
 %    All variables are automatically saved in a file named
-%    'SubjectID_SessionNumber.mat' in a subject-specific folder
+%    'SubjectID_SessionNumber.mat' in a subject-specific folder. Figures
+%    are saved separately in the same subject folder.
 %
 % Optional key/value pairs:
-%    'calFile'             - character vector with name of calibration file.
-%                            Default is 'MetropsisCalibration'.
+%    'calFile'             - character vector with name of calibration 
+%                            file. Default is 'MetropsisCalibration'.
 %
 %    'adjustCone'          - character vector indicating which cone's
 %                            contrast the user can adjust: 'L' or 'M'.
@@ -43,8 +44,8 @@ function GLW_CFF(varargin)
 %    'timeCheck'           - logical indicating whether to collect and plot
 %                            stimulus timing information. Default is false.
 %
-%    'maxFrames'           - double indicating the maximum number of
-%                            frames. Default is Inf.
+%    'timeCheckDuration'   - when timeCheck is enabled, integer duration 
+%                            (s) for collecting timing data. Default is 10.
 
 % History:
 %    06/05/19  dce       Wrote it. Visual angle conversion code from ar
@@ -77,7 +78,7 @@ p.addParameter('steadyConeContrast', 0.12, @(x) (isnumeric(x) & isscalar(x) & x 
 p.addParameter('flickerRate', 30, @(x) (isnumeric(x) & isscalar(x) & x >= 0));
 p.addParameter('viewDistance', 400, @(x) (isnumeric(x) & isscalar(x) & x > 0));
 p.addParameter('timeCheck', false, @(x) (islogical(x)));
-p.addParameter('maxFrames', Inf, @(x) (isnumeric(x) & isscalar(x)));
+p.addParameter('timeCheckDuration', 10, @(x) (isnumeric(x) & isscalar(x)& x >= 0));
 p.parse(varargin{:});
 
 % Key parameters. Maximum cone contrast values vary by monitor and are
@@ -87,14 +88,15 @@ nContrastSteps = 21;            % Number of possibilities for adjustable contras
 maxLContrast = 0.154933;        % Maximum L cone contrast for Display++
 maxMContrast = 0.165757;        % Maximum M cone contrast for Display++
 angle = 2;                      % Visual angle of stimulus (degrees)
-timingDuration = 10;            % Duration (s) that timing data will be collected for, if maxFrames is not specified
 
 % Check if chosen steady cone contrast is within monitor gamut
 steadyContrast = p.Results.steadyConeContrast;
 if strcmp(p.Results.adjustCone,'M') && (steadyContrast > maxLContrast)
-    error(sprintf('Chosen steady cone contrast %g is greater than max L contrast %g', steadyContrast, maxLContrast));
+    error('Chosen steady cone contrast %g is greater than max L contrast %g',...
+        steadyContrast, maxLContrast);
 elseif strcmp(p.Results.adjustCone,'L') && (steadyContrast > maxMContrast)
-    error(sprintf('Chosen steady cone contrast %g is greater than max M contrast %g', steadyContrast, maxMContrast));
+    error('Chosen steady cone contrast %g is greater than max M contrast %g',...
+        steadyContrast, maxMContrast);
 end
 
 % Get information on display
@@ -104,11 +106,13 @@ frameRate = last.refreshRate;
 screenSize = last.screenSizeMM;  % Screen dimensions in mm
 centerHeight = screenSize(2) / 2;
 
-% Check if user's flicker rate divides into frame rate
+% Check if chosen flicker rate divides into frame rate. We double the
+% flicker rate because each flicker cycle includes a color transition (min 2 frames) 
 if mod(frameRate, 2 * p.Results.flickerRate) == 0
     nHoldingFrames = frameRate / (2 * p.Results.flickerRate);
 else
-    error(sprintf('Monitor frame rate (%g Hz) is not divisible by chosen flicker rate (2 * %g Hz)', frameRate, p.Results.flickerRate));
+    error('Monitor frame rate (%g Hz) is not divisible by chosen flicker rate (2 * %g Hz)',...
+        frameRate, p.Results.flickerRate);
 end
 
 % Prompt user to enter subject ID and session number
@@ -126,32 +130,32 @@ end
 fileName = [subjectID,'_', sessionNum, '.mat'];
 fileLoc = fullfile(outputDir,fileName);
 if (isfile(fileLoc))
-    error(sprintf('Specified output file %s already exists', fileName));
+    error('Specified output file %s already exists', fileName);
 end
 
 % Load calibration information
-[cal,cals] = LoadCalFile(p.Results.calFile,[],getpref('BrainardLabToolbox','CalDataFolder'));
-load T_cones_ss2; % Cone fundamentals
+[cal,~] = LoadCalFile(p.Results.calFile,[],getpref('BrainardLabToolbox','CalDataFolder'));
+load('T_cones_ss2', 'T_cones_ss2', 'S_cones_ss2'); % Cone fundamentals
 cal = SetSensorColorSpace(cal,T_cones_ss2, S_cones_ss2);
 cal = SetGammaMethod(cal,0);
 
 % Fill table with adjustable cone contrast values. We assume three classes
 % of cones where L cones are the first and M cones are the second.
 adjustmentTable = zeros(3,nContrastSteps);
-if strcmp(p.Results.adjustCone,'M') %fill table with M cone contrast steps
+if strcmp(p.Results.adjustCone,'M') % Fill table with M cone contrast steps
     adjustmentTable(2,:) = linspace(0,maxMContrast,nContrastSteps);
-else %fill table with L cone contrast steps
+else                                % Fill table with L cone contrast steps
     adjustmentTable(1,:) = linspace(0,maxLContrast,nContrastSteps);
 end
 
-% Convert contrast values to RGB values
+% Convert contrast values to linear RGB values
 for i = 1:nContrastSteps
     adjustmentTable(:,i) = contrastTorgb(cal, adjustmentTable(:,i), 'RGB', true);
 end
 adjustmentTablePos = randi(nContrastSteps); % Random initial position in table
 
-% Create array to store adjustment history
-dataArray = zeros(3,100);
+% Create array to store adjustment history (room for 500 adjustments)
+dataArray = zeros(3,500);
 dataArray(:,1) = adjustmentTable(:,adjustmentTablePos);
 dataArrayPos = 2; % Initial position in adjustment history array
 
@@ -171,7 +175,7 @@ try
     intro.addText('When you are done, press q to quit adjustment',...
         'Center', [0 -0.3 * centerHeight], 'FontSize', 75, 'Color', [1 1 1],...
         'Name', 'line4');
-    intro.addText('*Press any key to begin experiment*',...
+    intro.addText('*Press space bar to begin experiment*',...
         'Center', [0 -0.5 * centerHeight], 'FontSize', 75, 'Color', [0.5 0.5 1],...
         'Name', 'line5');
     
@@ -181,9 +185,14 @@ try
     ListenChar(2);
     FlushEvents;
     
-    % Draw until the user presses a key
-    while ~CharAvail
+    % Draw until the user presses the space bar 
+    while true
         intro.draw;
+        if CharAvail
+            switch GetChar
+                case ' ', break; otherwise, continue;
+            end
+        end
     end
     intro.close;
     
@@ -203,27 +212,23 @@ try
     win.addOval([0 0], [diameter diameter], steadyConeCol, 'Name', 'circle');
     
     % Initial parameters.
-    elapsedFrames = 1;     % Tracks total number of elapsed frames
-    maxFrames = p.Results.maxFrames;
     % isSteadyCone tells us whether it is the static or adjustable cone
     % stimulus on this frame. How fast we toggle this determines the flicker rate.
     isSteadyCone = true;
+    elapsedFrames = 1;     % Tracks total number of elapsed frames
     
     
-    %create array for saving timing data for maxFrames or default duration
+    % Create array for saving timing data for maxFrames or default duration
     if p.Results.timeCheck
-        if isfinite(maxFrames)
-            timeStamps = zeros(1,maxFrames);
-        else
-            timeStamps = zeros(1, timingDuration*frameRate);
-        end
+        maxCheckedFrames = p.Results.timeCheckDuration * frameRate;
+        timeStamps = zeros(1, maxCheckedFrames);
     end
     
     win.open;
     mglDisplayCursor(0);
     
     % Loop to swich oval color and parse user input
-    while elapsedFrames <= maxFrames
+    while true
         % Draw circle
         if isSteadyCone
             color = steadyConeCol;
@@ -233,28 +238,28 @@ try
         win.setObjectColor('circle', color);
         win.draw;
         
-        % Save timestamp
-        if p.Results.timeCheck
-            timeStamps(elapsedFrames) = mglGetSecs;
-        end
-        
         % Switch color if needed
         if mod(elapsedFrames, nHoldingFrames) == 0
             isSteadyCone = ~isSteadyCone;
+        end
+        
+        % Save timestamp
+        if p.Results.timeCheck && elapsedFrames <= maxCheckedFrames
+            timeStamps(elapsedFrames) = mglGetSecs;
         end
         elapsedFrames = elapsedFrames + 1;
         
         % Check for user input
         if CharAvail
             switch GetChar
-                case 'q' % Quit adjustment
+                case 'q'    % Quit adjustment
                     break;
-                case 'u' % Adjust green up
+                case 'u'    % Adjust green up
                     adjustmentTablePos = adjustmentTablePos + 1;
                     if adjustmentTablePos > nContrastSteps
                         adjustmentTablePos = nContrastSteps;
                     end
-                case 'd' % Adjust green down
+                case 'd'    % Adjust green down
                     adjustmentTablePos = adjustmentTablePos - 1;
                     if adjustmentTablePos < 1
                         adjustmentTablePos = 1;
@@ -276,11 +281,11 @@ try
         % Plot frame durations
         timeSteps = diff(timeStamps);
         figure(1);
-        plot(timeSteps, 'r'); % Actual frame durations
-        yline(1/frameRate, 'b'); % Target frame rate
-        yline(2/frameRate, 'g'); % Double target frame rate
-        yline(0,'g'); %0 time
-        axis([0 maxFrames 0 2.5/frameRate]);
+        plot(timeSteps, 'r');      % Actual frame durations
+        yline(1/frameRate, 'b');   % Target frame rate
+        yline(2/frameRate, 'g');   % Double target frame rate
+        yline(0,'g');              %0 time
+        axis([0 maxCheckedFrames 0 2.5/frameRate]);
         title('Frame Rate');
         xlabel('Frame');
         ylabel('Duration (s)');
@@ -291,7 +296,7 @@ try
         figure(2);
         deviation = timeSteps - (1/frameRate);
         plot(deviation, 'r');
-        axis([0 maxFrames -2/frameRate 2/frameRate]);
+        axis([0 maxCheckedFrames -2/frameRate 2/frameRate]);
         title('Deviations from Frame Rate');
         xlabel('Frame');
         ylabel('Difference Between Measured and Target Duration (s)');
@@ -313,11 +318,15 @@ try
     % Display results and save data
     fprintf('chosen %s cone contrast is %g \n', p.Results.adjustCone, dataArray(end));
     fprintf('adjustment history: ');
-    fprintf('%g, ', dataArray);
+    if length(dataArray) > 1
+        fprintf('%g, ', dataArray(1:end-1));
+    end 
+    fprintf('%g', dataArray(end)); 
     fprintf('\n');
     save(fileLoc);
     
-catch e % Handle errors
+    % Handle errors
+catch e
     ListenChar(0);
     mglDisplayCursor(1);
     rethrow(e);
