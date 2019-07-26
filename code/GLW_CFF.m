@@ -116,9 +116,8 @@ else
         frameRate, p.Results.flickerRate);
 end
 
-% Prompt user to enter subject ID, configuration, and session number
+% Prompt user to enter subject ID and session number
 subjectID = input('Enter subject ID: ');
-configuration = input('Enter experiment configuration: ');
 sessionNum = num2str(input('Enter session number: '));
 
 % Create directory named SubjectID for saving data, if it doesn't exist already
@@ -127,7 +126,10 @@ if (~exist(outputDir,'dir'))
     mkdir(outputDir);
 end
 
-% Create subfolder for configuration 
+% Create subfolder based on experiment configuration 
+configuration = ['adjust' p.Results.adjustCone 'Cone_'...
+    num2str(p.Results.steadyConeContrast) 'SteadyContrast_'...
+    num2str(p.Results.flickerRate) 'Hz']; 
 subfolder = fullfile(outputDir, configuration); 
 if (~exist(subfolder,'dir'))
     mkdir(subfolder);
