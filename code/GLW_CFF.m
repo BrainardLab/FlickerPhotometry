@@ -14,8 +14,9 @@ function GLW_CFF(varargin)
 %    verifying display timing.
 %
 % Inputs
-%    After starting the program, the experimenter is promoted to enter
-%    subject ID (character vector) and session number (integer)
+%    After starting the program, the experimenter is promoted to enter the
+%    subject ID (character vector), experiment configuration (character
+%    vector), and session number (integer). 
 %
 % Outputs:
 %    All variables are automatically saved in a file named
@@ -115,8 +116,9 @@ else
         frameRate, p.Results.flickerRate);
 end
 
-% Prompt user to enter subject ID and session number
+% Prompt user to enter subject ID, configuration, and session number
 subjectID = input('Enter subject ID: ');
+configuration = input('Enter experiment configuration: ');
 sessionNum = num2str(input('Enter session number: '));
 
 % Create directory named SubjectID for saving data, if it doesn't exist already
@@ -125,10 +127,16 @@ if (~exist(outputDir,'dir'))
     mkdir(outputDir);
 end
 
+% Create subfolder for configuration 
+subfolder = fullfile(outputDir, configuration); 
+if (~exist(subfolder,'dir'))
+    mkdir(subfolder);
+end
+
 % Create data file with name Subject ID_SessionNumber. Throw error if a
 % file already exists with that name
 fileName = [subjectID,'_', sessionNum, '.mat'];
-fileLoc = fullfile(outputDir,fileName);
+fileLoc = fullfile(subfolder,fileName);
 if (isfile(fileLoc))
     error('Specified output file %s already exists', fileName);
 end
