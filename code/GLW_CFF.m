@@ -160,9 +160,9 @@ end
 
 % Convert contrast values to linear RGB values
 for i = 1:nContrastSteps
-    adjustmentTable(:,i) = contrastTorgb(cal, adjustmentTable(:,i), 'RGB', true);
+    adjustmentTable(:,i) = contrastTorgb(cal, adjustmentTable(:,i), 'RGB', true, 'Background', [0.25 0.25 0.25]);
 end
-adjustmentTablePos = randi(nContrastSteps); % Random initial position in table
+adjustmentTablePos = 1; % randi(nContrastSteps)Random initial position in table
 
 % Create array to store adjustment history (room for 500 adjustments)
 dataArray = zeros(3,500);
@@ -213,9 +213,9 @@ try
     % Calculate color of circle and diameter in mm. Then add circle.
     % L cone color is set to 12% l contrast
     if strcmp(p.Results.adjustCone,'M')
-        steadyConeCol = contrastTorgb(cal, [steadyContrast 0 0], 'RGB', true);
+        steadyConeCol = contrastTorgb(cal, [steadyContrast 0 0], 'RGB', true, 'Background', [0.25 0.25 0.25]);
     else
-        steadyConeCol = contrastTorgb(cal, [0 steadyContrast 0], 'RGB', true);
+        steadyConeCol = contrastTorgb(cal, [0 steadyContrast 0], 'RGB', true, 'Background', [0.25 0.25 0.25]);
     end
     
     diameter = tan(deg2rad(angle/2)) * (2 * p.Results.viewDistance);
@@ -318,7 +318,7 @@ try
     col = length(dataArray)/3;
     dataArray = reshape(dataArray, [3 col]);
     for i = 1:col
-        dataArray(:,i) = rgbToContrast(cal, dataArray(:,i)', 'RGB', true);
+        dataArray(:,i) = rgbToContrast(cal, dataArray(:,i)', 'RGB', true, 'Background', [0.25 0.25 0.25]);
     end
     if strcmp(p.Results.adjustCone,'M')
         dataArray = dataArray(2,:);
