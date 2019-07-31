@@ -83,11 +83,11 @@ p.addParameter('timeCheckDuration', 10, @(x) (isnumeric(x) & isscalar(x)& x >= 0
 p.parse(varargin{:});
 
 % Key parameters. Maximum cone contrast values vary by monitor and are
-% based on a [0.5 0.5 0.5] linear RGB background
+% based on the chosen linear RGB background
 bgLinearRGB = [0.25 0.25 0.25]; % Background linear RGB values
 nContrastSteps = 21;            % Number of possibilities for adjustable contrast
-maxLContrast = 0.154933;        % Maximum L cone contrast for Display++
-maxMContrast = 0.165757;        % Maximum M cone contrast for Display++
+maxLContrast = 0.459726;        % Maximum L cone contrast for Display++
+maxMContrast = 0.163705;        % Maximum M cone contrast for Display++
 angle = 2;                      % Visual angle of stimulus (degrees)
 
 % Check if chosen steady cone contrast is within monitor gamut
@@ -160,7 +160,8 @@ end
 
 % Convert contrast values to linear RGB values
 for i = 1:nContrastSteps
-    adjustmentTable(:,i) = contrastTorgb(cal, adjustmentTable(:,i), 'RGB', true, 'Background', [0.25 0.25 0.25]);
+    adjustmentTable(:,i) = contrastTorgb(cal, adjustmentTable(:,i),...
+        'RGB', true, 'Background', bgLinearRGB);
 end
 adjustmentTablePos = 1; % randi(nContrastSteps)Random initial position in table
 
@@ -213,9 +214,11 @@ try
     % Calculate color of circle and diameter in mm. Then add circle.
     % L cone color is set to 12% l contrast
     if strcmp(p.Results.adjustCone,'M')
-        steadyConeCol = contrastTorgb(cal, [steadyContrast 0 0], 'RGB', true, 'Background', [0.25 0.25 0.25]);
+        steadyConeCol = contrastTorgb(cal, [steadyContrast 0 0],...
+            'RGB', true, 'Background', bgLinearRGB);
     else
-        steadyConeCol = contrastTorgb(cal, [0 steadyContrast 0], 'RGB', true, 'Background', [0.25 0.25 0.25]);
+        steadyConeCol = contrastTorgb(cal, [0 steadyContrast 0],...
+            'RGB', true, 'Background', bgLinearRGB);
     end
     
     diameter = tan(deg2rad(angle/2)) * (2 * p.Results.viewDistance);
@@ -318,7 +321,8 @@ try
     col = length(dataArray)/3;
     dataArray = reshape(dataArray, [3 col]);
     for i = 1:col
-        dataArray(:,i) = rgbToContrast(cal, dataArray(:,i)', 'RGB', true, 'Background', [0.25 0.25 0.25]);
+        dataArray(:,i) = rgbToContrast(cal, dataArray(:,i)', 'RGB',...
+            true, 'Background', bgLinearRGB);
     end
     if strcmp(p.Results.adjustCone,'M')
         dataArray = dataArray(2,:);
